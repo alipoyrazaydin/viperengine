@@ -1,0 +1,202 @@
+class ViperEngineNode extends AudioWorkletNode {
+    // Enums
+    static RendererType = {
+        Byte: 0,
+        Float: 1,
+        SignedByte: 2
+    }
+    static ExpressionType = {
+        Infix: 0,
+        PostFix: 1,
+        Glitch: 2,
+        Function: 3,
+    }
+
+    // Worklet Processing
+    static WorkletModule = CompileWorker(`
+        const int8 = new Int8Array(1);
+        ${Librarify(WrappingStack, ViperCompiler, ViperProcessor)}
+        class ViperProcessingUnit extends AudioWorkletProcessor {
+            static get parameterDescriptors() {
+                return [{
+                    name: "sampleRate",
+                    defaultValue: 8e3
+                }]
+             }
+             constructor() {
+                 super(), this.engine = new ViperProcessor, this.port.onmessage = e => {
+                     let {
+                         cmd: t,
+                         data: s
+                     } = e.data, a = this[t];
+                     if (a) a.call(this, s);
+                     else throw Error(\`unknown command: '${t}'\`)
+                 }
+             }
+             setExtra(e) { this.engine.setExtra(e) }
+             callFunc({fn: e,args: t}) { this.engine[e].call(this.engine, ...t) }
+             setExpressions(e) { this.engine.setExpressions(e) }
+             setExpressionsAndResetToZero(e) { this.engine.reset(), this.engine.setExpressions(e), this.engine.reset() }
+             process(e, t, s) { return this.engine.process(t[0][0].length, t[0][0], t[0][1]), !0 }
+        }
+        registerProcessor("viperengine-processingunit", ViperProcessingUnit);
+    `);
+
+    static async setup(context) {
+        return context.audioWorklet.addModule(WorkletModule);
+    }
+
+    constructor(context) {
+        super(context, "viperengine-processingunit", { outputChannelCount: [2] });
+
+        if (typeof window !== undefined) {
+
+        }
+
+        this.expressions = [];
+        this.extra = ViperCompiler.makeExtra();
+        this.time = 0;
+        this.startTime = performance.now();
+        this.pauseTime = this.startTime;
+        this.connected = false;
+        this.running = false;
+
+        this.sampleRate = 8e3;
+        this.expressionType = 0;
+        this.type = 0;
+    }
+    #sendExtra(data) {
+        this.port.postMessage({
+            cmd: 'setExtra',
+            data
+        });
+    }
+    #callFunc(fnName, ...args) {
+        this.port.postMessage({
+            cmd: 'callFunc',
+            data: {
+                fn: fnName,
+                args
+            }
+        });
+    }
+    connect(destination) {
+        super.connect(destination);
+        if (!this.connected) {
+            this.connected = true;
+            const ept = performance.now() - this.pauseTime;
+            this.startTime += ept;
+        }
+    }
+    disconnect() {
+        if (this.connected) {
+            this.connected = false;
+            this.pauseTime = performance.now();
+            super.disconnect();
+        }
+    }
+    reset() {
+        this.#callFunc('reset');
+        this.startTime = performance.now();
+        this.pauseTime = this.startTime;
+    }
+    play() {
+        this.#callFunc('play');
+        this.running = true;
+    }
+    pause() {
+        this.#callFunc('pause');
+        this.running = false;
+    }
+    stop() {
+        this.#callFunc('stop');
+        this.running = false;
+    }
+    isConnected() {
+        return this.connected;
+    }
+    isRunning() {
+        return this.running
+    }
+    getTime() {
+        const time = (this.connected && this.running) ? performance.now() : this.pauseTime;
+        return (time - this.startTime) * 0.001 * this.desiredSampleRate | 0;
+    }
+    setExpressions(expressions, resetToZero) {
+        const compileExpressions = (expressions, expressionType, extra) => {
+            const funcs = [];
+            try {
+                for (let i = 0; i < expressions.length; ++i) {
+                    const exp = expressions[i];
+                    if (exp !== this.expressions[i]) {
+                        funcs.push(ViperCompiler.compileExpression(exp, expressionType, extra));
+                    } else {
+                        if (this.functions[i]) {
+                            funcs.push(this.functions[i]);
+                        }
+                    }
+                }
+            } catch (e) {
+                if (e.stack) {
+                    const m = /<anonymous>:1:(\d+)/.exec(e.stack);
+                    if (m) {
+                        const charNdx = parseInt(m[1]);
+                        console.error(e.stack);
+                        console.error(expressions.join('\n')
+                            .substring(0, charNdx), '-----VVVVV-----\n', expressions.substring(charNdx));
+                    }
+                } else {
+                    console.error(e, e.stack);
+                }
+                throw e;
+            }
+            return funcs;
+        };
+        const funcs = compileExpressions(expressions, this.expressionType, this.extra);
+        if (!funcs) {
+            return;
+        }
+        this.expressions = expressions.slice(0);
+        this.functions = funcs;
+        const exp = funcs.map(({
+            expression
+        }) => expression);
+        this.port.postMessage({
+            cmd: resetToZero ? 'setExpressionsAndResetToZero' : 'setExpressions',
+            data: exp,
+        });
+        if (resetToZero) {
+            this.reset();
+        }
+    }
+    convertToDesiredSampleRate(rate) {
+        return Math.floor(rate * this.desiredSampleRate / this.actualSampleRate);
+    }
+    setDesiredSampleRate(rate) {
+        this.#callFunc('setDesiredSampleRate', rate);
+        this.desiredSampleRate = rate;
+    }
+    getDesiredSampleRate() {
+        return this.desiredSampleRate;
+    }
+    setExpressionType(type) {
+        this.expressionType = type;
+        this.#callFunc('setExpressionType', type);
+    }
+    getExpressions() {
+        return this.expressions.slice();
+    }
+    getExpressionType() {
+        return this.expressionType;
+    }
+    setType(type) {
+        this.type = type;
+        this.#callFunc('setType', type);
+    }
+    getType() {
+        return this.type;
+    }
+    getNumChannels() {
+        return this.channelCount;
+    }
+}

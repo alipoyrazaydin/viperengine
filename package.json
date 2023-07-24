@@ -1,0 +1,28 @@
+{
+  "name": "viperengine",
+  "version": "1.0.0",
+  "description": "ViperEngine is a renderer library for music with code libraries such as Bytebeat, Floatbeat and much more with various expression styles.",
+  "main": "build.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alipoyrazaydin/viperengine.git"
+  },
+  "keywords": [
+    "bytebeat",
+    "floatbeat",
+    "glitch",
+    "machine",
+    "code",
+    "with",
+    "music"
+  ],
+  "author": "alipoyrazaydin",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/alipoyrazaydin/viperengine/issues"
+  },
+  "homepage": "https://github.com/alipoyrazaydin/viperengine#readme"
+}

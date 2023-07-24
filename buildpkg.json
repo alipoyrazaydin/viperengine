@@ -1,0 +1,10 @@
+{
+  "output_file": "ViperStudio.js",
+  "build_files": [
+    "WorkerCompiler.kijs",
+    "WrappingStack.kijs",
+    "LanguageCompiler.kijs",
+    "Processor.kijs",
+    "ViperEngine.kijs"
+  ]
+}

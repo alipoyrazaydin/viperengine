@@ -1,0 +1,230 @@
+class ViperCompiler {
+    static strip(e) {
+        return e.replace(/^\s+/, "")
+            .replace(/\s+$/, "")
+    }
+    static removeCommentsAndLineBreaks(e) {
+        return e = (e = (e = e.replace(/\/\/.*/g, " "))
+            .replace(/\n/g, " "))
+            .replace(/\/\*.*?\*\//g, " ")
+    }
+    static is2NumberArray(e) {
+        return Array.isArray(e) && 2 === e.length && "number" == typeof e[0] && "number" == typeof e[1]
+    }
+    static applyPostfixTemplate(e) {
+        return `return function(t, i, stack, window, extra) { ${e.exp} };`
+    }
+
+    static postfixToInfix(e) {
+        e = (e = ViperCompiler.removeCommentsAndLineBreaks(e))
+            .replace(/(\r\n|\r|\n|\t| )+/gm, " ");
+        let t = ViperCompiler.strip(e)
+            .split(" "),
+            a = [];
+        for (let s = 0; s < t.length; ++s) {
+            let r = t[s];
+            switch (r.toLowerCase()) {
+                case ">":
+                    a.push("var v1 = stack.pop();"), a.push("var v2 = stack.pop();"), a.push("stack.push((v1 < v2) ? 0xFFFFFFFF : 0);");
+                    break;
+                case "<":
+                    a.push("var v1 = stack.pop();"), a.push("var v2 = stack.pop();"), a.push("stack.push((v1 > v2) ? 0xFFFFFFFF : 0);");
+                    break;
+                case "=":
+                    a.push("var v1 = stack.pop();"), a.push("var v2 = stack.pop();"), a.push("stack.push((v2 == v1) ? 0xFFFFFFFF : 0);");
+                    break;
+                case "drop":
+                    a.push("stack.pop();");
+                    break;
+                case "dup":
+                    a.push("stack.push(stack.pick(0));");
+                    break;
+                case "swap":
+                    a.push("var a1 = stack.pop();"), a.push("var a0 = stack.pop();"), a.push("stack.push(a1);"), a.push("stack.push(a0);");
+                    break;
+                case "pick":
+                    a.push("var a0 = stack.pop();"), a.push("stack.push(stack.pick(a0));");
+                    break;
+                case "put":
+                    a.push("var a0 = stack.pop();"), a.push("var a1 = stack.pick(0);"), a.push("stack.put(a0, a1);");
+                    break;
+                case "abs":
+                case "sqrt":
+                case "round":
+                case "tan":
+                case "log":
+                case "exp":
+                case "sin":
+                case "cos":
+                case "floor":
+                case "ceil":
+                case "int":
+                    a.push("var a0 = stack.pop();"), a.push("stack.push(" + r + "(a0));");
+                    break;
+                case "max":
+                case "min":
+                case "pow":
+                    a.push("var a0 = stack.pop();"), a.push("var a1 = stack.pop();"), a.push("stack.push(" + r + "(a1, a0));");
+                    break;
+                case "random":
+                    a.push("stack.push(" + r + "());");
+                    break;
+                case "/":
+                case "+":
+                case "-":
+                case "*":
+                case "%":
+                case ">>":
+                case "<<":
+                case "|":
+                case "&":
+                case "^":
+                case "&&":
+                case "||":
+                    a.push("var a1 = stack.pop();"), a.push("var a0 = stack.pop();"), a.push("stack.push((a0 " + r + " a1) | 0);");
+                    break;
+                case "~":
+                    a.push("var a0 = stack.pop();"), a.push("stack.push(~a0);");
+                    break;
+                default:
+                    a.push("stack.push(" + r + ");")
+            }
+        }
+        a.push("return stack.pop();");
+        let p = ViperCompiler.applyPostfixTemplate({
+            exp: a.join("\n")
+        });
+        return p
+    }
+    static glitchToPostfix = (function () {
+        let e = {
+            a: "t",
+            b: "put",
+            c: "drop",
+            d: "*",
+            e: "/",
+            f: "+",
+            g: "-",
+            h: "%",
+            j: "<<",
+            k: ">>",
+            l: "&",
+            m: "|",
+            n: "^",
+            o: "~",
+            p: "dup",
+            q: "pick",
+            r: "swap",
+            s: "<",
+            t: ">",
+            u: "=",
+            "/": "//",
+            "!": "\n",
+            ".": " "
+        };
+        return function (t) {
+            let a = [];
+            t = t.replace("glitch://", ""), t = (t = (t = ViperCompiler.removeCommentsAndLineBreaks(t))
+                .replace("glitch:", ""))
+                .replace(/^[^!]*!/, "");
+            for (let s = 0; s < t.length; ++s) {
+                let r = !1,
+                    p = "",
+                    c;
+                for (; !r;) {
+                    var o;
+                    (o = c = t[s]) >= "0" && o <= "9" || o >= "A" && o <= "F" ? (p += c, ++s) : (r = !0, p.length && (--s, c = "0x" + p))
+                }
+                a.push(e[c] || c)
+            }
+            return a.join(" ")
+        }
+    })();
+    static makeContext() {
+        return {
+            console: {
+                Math: {
+                    log: console.log.bind(console)
+                }
+            }
+        }
+    }
+    static makeExtra() {
+        return {
+            mouseX: 0,
+            mouseY: 0,
+            width: 1,
+            height: 1,
+            tiltX: 0,
+            tiltY: 0,
+            compass: 0,
+            KSLBank: {}
+        }
+    }
+    static addGlobals(e, t, a = () => !0) {
+        return `
+          var console = {log(){}, info(){}, error(){}, warn(){}};
+          var ${Object.getOwnPropertyNames(e).filter(a).map(a => (e[a], `${a} = ${t}.${a}`)).join(",\n")};
+        `;
+    }
+    static s_fnHeader = (function () {
+        let e = {},
+            t = new Set(["parseInt", "parseFloat", "Array", "isNaN",]),
+            a = e => !t.has(e);
+        return Object.getOwnPropertyNames(globalThis)
+            .filter(a)
+            .forEach(t => {
+                e[t] = !0
+            }), delete e.Math, delete e.window, `
+      {try { (0['constructor']['constructor'].prototype.constructor = '') } catch (e) {}};
+      var ${Object.keys(e).sort().join(",\n")};
+      ${ViperCompiler.addGlobals(Math, "Math")}
+  `
+    })();
+    static expressionStringToFn(e, t, a) {
+        let s = Function("stack", "window", "extra", e),
+            r = s(void 0, void 0, void 0),
+            p = ViperCompiler.makeContext(),
+            c = new WrappingStack,
+            o = Object.assign({}, t),
+            n = r.call(p, 0, 0, c, p, o);
+        "function" == typeof n && (n = (r = r())
+            .call(p, 0, 0, c, p, o));
+        let i = ViperCompiler.is2NumberArray(n);
+        if (a)
+            for (let u = 0; u < 1e3; u += 100) {
+                let l = r(u, u, c, p, o);
+                if ("function" == typeof l && (r = r(), l = 0), !ViperCompiler.is2NumberArray(l) && "number" != typeof l) throw "NaN"
+            }
+        return {
+            f: r,
+            array: i
+        }
+    }
+    static compileExpression(e, t, a) {
+        let s;
+        try {
+            3 === t ? e = `
+          return function(t, i, stack, window, extra) { 
+              ${ViperCompiler.strip(e)};
+          }` : (2 === t && (e = ViperCompiler.glitchToPostfix(e), t = 1), e = 1 === t ? ViperCompiler.postfixToInfix(e) : `
+            return function(t, i, stack, window, extra) { 
+                return ${ViperCompiler.strip(e)};
+            }`), e = ViperCompiler.removeCommentsAndLineBreaks(e), s = `${ViperCompiler.s_fnHeader}${e = (e = e.replace(/\bint\b/g, "floor")).replace(/(?:extra\.)?(\w+)/g, function (e, t) { var s, r, p; return s = e, r = a, p = t, Object.prototype.hasOwnProperty.call(r, p) ? "extra." + p : s })}`;
+            let r = ViperCompiler.expressionStringToFn(s, a, !0);
+            return {
+                ...r,
+                expression: s
+            }
+        } catch (p) {
+            if (p.stack) {
+                let c = /<anonymous>:1:(\d+)/.exec(p.stack);
+                if (c) {
+                    let o = parseInt(c[1]);
+                    console.error(p.stack), console.error(s.substring(0, o), "-----VVVVV-----\n", s.substring(o))
+                }
+            } else console.error(p, p.stack);
+            throw p
+        }
+    }
+}

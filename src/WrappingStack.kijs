@@ -1,0 +1,36 @@
+class WrappingStack {
+  constructor(stackSize = 256) {
+      let sp = 0;
+      const stack = [];
+      for (let ii = 0; ii < stackSize; ++ii) {
+          stack.push(0);
+      }
+      return {
+          pop: function () {
+              sp = (sp === 0) ? (stackSize - 1) : (sp - 1);
+              return stack[sp]
+          },
+          push: function (v) {
+              stack[sp++] = v;
+              sp = sp % stackSize
+          },
+          pick: function (index) {
+              let i = sp - Math.floor(index) - 1;
+              while (i < 0) {
+                  i += stackSize;
+              }
+              return stack[i % stackSize]
+          },
+          put: function (index, value) {
+              let i = sp - Math.floor(index);
+              while (i < 0) {
+                  i += stackSize;
+              }
+              stack[i % stackSize] = value
+          },
+          sp: function () {
+              return sp
+          },
+      };
+  }
+}
